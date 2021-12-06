@@ -257,6 +257,9 @@ class Hla(HighLevelAnalyzer):
 		'event': {
 			'format': 'EVENT: {{data.EVENT}}({{data.EVENT_decoded}}), Parameter length: {{data.PAR_LEN}}, Data: {{data.data}}'
 		},
+		'command complete event': {
+			'format': 'Command complete event for: {{data.OPCODE}}({{data.OPCODE_decoded}}), Parameter length: {{data.PAR_LEN}}, Data: {{data.data}}'
+		},
 		'HCI ACL Data': {
 			'format': 'Asynchronous Data, Parameter length: {{data.PAR_LEN}}, Data: {{data.data}}'
 		},
@@ -290,7 +293,7 @@ class Hla(HighLevelAnalyzer):
 			else:
 				self.receiveBuffer.append(uartbuffer);
 			if self.receiveBuffer[0] == 1:
-				if(self.receive_buffer_pointer >= 3):#Byte 7 and 8 tell how big the message is
+				if(self.receive_buffer_pointer >= 3):#Byte 2 and 3 tell how big the message is
 					PAR_LEN = self.receiveBuffer[3]; #Extract the parameter length from the message
 					OPCODE = self.receiveBuffer[2] << 8 | self.receiveBuffer[1]; #Extract the OPCODE from the message
 					if ( self.receive_buffer_pointer >= PAR_LEN + 3): #Check to see if the entire message has been received
@@ -302,8 +305,8 @@ class Hla(HighLevelAnalyzer):
 						tempMSG = AnalyzerFrame('command', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'OPCODE': hex(OPCODE),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[4:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
-			elif(self.receiveBuffer[0] == 4):
-				if(self.receive_buffer_pointer >= 2):#Byte 7 and 8 tell how big the message is
+			elif(self.receiveBuffer[0] == 4): #HCI event
+				if(self.receive_buffer_pointer >= 2):#Byte 1 and 2 tell how big the message is
 					PAR_LEN = self.receiveBuffer[2]; #Extract the parameter length from the message
 					EVENT = self.receiveBuffer[1]; #Extract the event code from the message
 					if ( self.receive_buffer_pointer >= PAR_LEN + 2): #Check to see if the entire message has been received
@@ -312,25 +315,34 @@ class Hla(HighLevelAnalyzer):
 							EVENT_decoded = list(EVENT_dict.keys())[list(EVENT_dict.values()).index(EVENT)]
 						except ValueError: #Unknown ID
 							pass
-						tempMSG = AnalyzerFrame('event', self.startTime, frame.end_time, {'EVENT_decoded':EVENT_decoded, 'EVENT': hex(EVENT),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
+						if EVENT == EVENT_dict['HCI_COMMAND_COMPLETE']:
+							OPCODE = self.receiveBuffer[5] << 8 | self.receiveBuffer[4]; #Extract the OPCODE from the message
+							OPCODE_decoded = "Unknown"
+							try:
+								OPCODE_decoded = list(OPCODE_dict.keys())[list(OPCODE_dict.values()).index(OPCODE)]
+							except ValueError: #Unknown ID
+								pass
+							tempMSG = AnalyzerFrame('command complete event', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'EVENT_decoded':EVENT_decoded, 'OPCODE':OPCODE, 'EVENT': hex(EVENT),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
+						else:
+							tempMSG = AnalyzerFrame('event', self.startTime, frame.end_time, {'EVENT_decoded':EVENT_decoded, 'EVENT': hex(EVENT),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})						
 						self.receive_buffer_pointer = -1
 			
 			elif(self.receiveBuffer[0] == 2): #HCI ACL Data
-				if(self.receive_buffer_pointer >= 2):#Byte 7 and 8 tell how big the message is
+				if(self.receive_buffer_pointer >= 2):#Byte 1 and 2 tell how big the message is
 					PAR_LEN = self.receiveBuffer[4] << 8 | self.receiveBuffer[3]; #Extract the parameter length from the message
 					if ( self.receive_buffer_pointer >= PAR_LEN + 3): #Check to see if the entire message has been received
 						tempMSG = AnalyzerFrame('HCI ACL Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[5:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
 			elif(self.receiveBuffer[0] == 3): #Synchronous Data
-				if(self.receive_buffer_pointer >= 2):#Byte 7 and 8 tell how big the message is
+				if(self.receive_buffer_pointer >= 2):#Byte 1 and 2 tell how big the message is
 					PAR_LEN = self.receiveBuffer[3]; #Extract the parameter length from the message
 					if ( self.receive_buffer_pointer >= PAR_LEN + 3): #Check to see if the entire message has been received
 						tempMSG = AnalyzerFrame('Synchronous Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[4:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
 			elif(self.receiveBuffer[0] == 5): #Isochronous Data
-				if(self.receive_buffer_pointer >= 2):#Byte 7 and 8 tell how big the message is
+				if(self.receive_buffer_pointer >= 2):#Byte 1 and 2 tell how big the message is
 					PAR_LEN = (self.receiveBuffer[4] << 8 | self.receiveBuffer[3]) >> 2; #Extract the parameter length from the message
 					if ( self.receive_buffer_pointer >= PAR_LEN + 5): #Check to see if the entire message has been received
 						tempMSG = AnalyzerFrame('Isochronous Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[4:]), 'message': bytes(self.receiveBuffer)})
