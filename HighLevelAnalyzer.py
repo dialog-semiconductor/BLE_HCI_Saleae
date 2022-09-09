@@ -239,6 +239,79 @@ EVENT_dict = {
 	'AUTHENTICATED_PAYLOAD_TIMEOUT_EXPIRED'		:0x57
 }
 
+error_dict = {
+  'Success'                                                                         :0x00, 
+  'Unknown HCI Command'                                                             :0x01, 
+  'Unknown Connection Identifier'                                                   :0x02, 
+  'Hardware Failure'                                                                :0x03, 
+  'Page Timeout'                                                                    :0x04, 
+  'Authentication Failure'                                                          :0x05, 
+  'PIN or Key Missing'                                                              :0x06, 
+  'Memory Capacity Exceeded'                                                        :0x07, 
+  'Connection Timeout'                                                              :0x08, 
+  'Connection Limit Exceeded'                                                       :0x09, 
+  'Synchronous Connection Limit To A Device Exceeded'                               :0x0A, 
+  'Connection Already Exists'                                                       :0x0B, 
+  'Command Disallowed'                                                              :0x0C, 
+  'Connection Rejected due to Limited Resources'                                    :0x0D, 
+  'Connection Rejected Due To Security Reasons'                                     :0x0E, 
+  'Connection Rejected due to Unacceptable BD_ADDR'                                 :0x0F, 
+  'Connection Accept Timeout Exceeded'                                              :0x10, 
+  'Unsupported Feature or Parameter Value'                                          :0x11, 
+  'Invalid HCI Command Parameters'                                                  :0x12, 
+  'Remote User Terminated Connection'                                               :0x13, 
+  'Remote Device Terminated Connection due to Low Resources'                        :0x14, 
+  'Remote Device Terminated Connection due to Power Off'                            :0x15, 
+  'Connection Terminated By Local Host'                                             :0x16, 
+  'Repeated Attempts'                                                               :0x17, 
+  'Pairing Not Allowed'                                                             :0x18, 
+  'Unknown LMP PDU'                                                                 :0x19, 
+  'Unsupported Remote Feature / Unsupported LMP Feature'                            :0x1A, 
+  'SCO Offset Rejected'                                                             :0x1B, 
+  'SCO Interval Rejected'                                                           :0x1C, 
+  'SCO Air Mode Rejected'                                                           :0x1D, 
+  'Invalid LMP Parameters / Invalid LL Parameters'                                  :0x1E, 
+  'Unspecified Error'                                                               :0x1F, 
+  'Unsupported LMP Parameter Value / Unsupported LL Parameter Value'                :0x20, 
+  'Role Change Not Allowed'                                                         :0x21, 
+  'LMP Response Timeout / LL Response Timeout'                                      :0x22, 
+  'LMP Error Transaction Collision / LL Procedure Collision'                        :0x23, 
+  'LMP PDU Not Allowed'                                                             :0x24, 
+  'Encryption Mode Not Acceptable'                                                  :0x25, 
+  'Link Key cannot be Changed'                                                      :0x26, 
+  'Requested QoS Not Supported'                                                     :0x27, 
+  'Instant Passed'                                                                  :0x28, 
+  'Pairing With Unit Key Not Supported'                                             :0x29, 
+  'Different Transaction Collision'                                                 :0x2A, 
+  'Reserved for future use'                                                         :0x2B, 
+  'QoS Unacceptable Parameter'                                                      :0x2C, 
+  'QoS Rejected'                                                                    :0x2D, 
+  'Channel Classification Not Supported'                                            :0x2E, 
+  'Insufficient Security'                                                           :0x2F, 
+  'Parameter Out Of Mandatory Range'                                                :0x30, 
+  'Reserved for future use'                                                         :0x31, 
+  'Role Switch Pending'                                                             :0x32, 
+  'Reserved for future use'                                                         :0x33, 
+  'Reserved Slot Violation'                                                         :0x34, 
+  'Role Switch Failed'                                                              :0x35, 
+  'Extended Inquiry Response Too Large'                                             :0x36, 
+  'Secure Simple Pairing Not Supported By Host'                                     :0x37, 
+  'Host Busy - Pairing'                                                             :0x38, 
+  'Connection Rejected due to No Suitable Channel Found'                            :0x39, 
+  'Controller Busy'                                                                 :0x3A, 
+  'Unacceptable Connection Parameters'                                              :0x3B, 
+  'Advertising Timeout'                                                             :0x3C, 
+  'Connection Terminated due to MIC Failure'                                        :0x3D, 
+  'Connection Failed to be Established / Synchronization Timeout'                   :0x3E, 
+  'MAC Connection Failed'                                                           :0x3F, 
+  'Coarse Clock Adjustment Rejected but Will Try to Adjust Using Clock Dragging'    :0x40, 
+  'Type0 Submap Not Defined'                                                        :0x41, 
+  'Unknown Advertising Identifier'                                                  :0x42, 
+  'Limit Reached'                                                                   :0x43, 
+  'Operation Cancelled by Host'                                                     :0x44, 
+  'Packet Too Long'                                                                 :0x45
+}
+
 # High level analyzers must subclass the HighLevelAnalyzer class.
 class Hla(HighLevelAnalyzer):
 	# List of settings that a user can set for this High Level Analyzer.
@@ -258,7 +331,10 @@ class Hla(HighLevelAnalyzer):
 			'format': 'EVENT: {{data.EVENT}}({{data.EVENT_decoded}}), Parameter length: {{data.PAR_LEN}}, Data: {{data.data}}'
 		},
 		'command complete event': {
-			'format': 'Command complete event for: {{data.OPCODE}}({{data.OPCODE_decoded}}), Parameter length: {{data.PAR_LEN}}, Data: {{data.data}}'
+			'format': 'Command complete event for: {{data.OPCODE}}({{data.OPCODE_decoded}}), Data: {{data.data}}'
+		},
+		'disconnection event': {
+			'format': 'Disconnection complete event for handle: {{data.conhndl}}. Reason: {{data.reason_decoded}}({{data.reason}}), Data: {{data.data}}'
 		},
 		'HCI ACL Data': {
 			'format': 'Asynchronous Data, Parameter length: {{data.PAR_LEN}}, Data: {{data.data}}'
@@ -293,7 +369,7 @@ class Hla(HighLevelAnalyzer):
 			else:
 				self.receiveBuffer.append(uartbuffer);
 			if self.receiveBuffer[0] == 1:
-				if(self.receive_buffer_pointer >= 3):#Byte 2 and 3 tell how big the message is
+				if(self.receive_buffer_pointer >= 3):#Byte 7 and 8 tell how big the message is
 					PAR_LEN = self.receiveBuffer[3]; #Extract the parameter length from the message
 					OPCODE = self.receiveBuffer[2] << 8 | self.receiveBuffer[1]; #Extract the OPCODE from the message
 					if ( self.receive_buffer_pointer >= PAR_LEN + 3): #Check to see if the entire message has been received
@@ -305,46 +381,55 @@ class Hla(HighLevelAnalyzer):
 						tempMSG = AnalyzerFrame('command', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'OPCODE': hex(OPCODE),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[4:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
-			elif(self.receiveBuffer[0] == 4): #HCI event
-				if(self.receive_buffer_pointer >= 2):#Byte 1 and 2 tell how big the message is
+			elif(self.receiveBuffer[0] == 4):
+				if(self.receive_buffer_pointer >= 2):#Byte 7 and 8 tell how big the message is
 					PAR_LEN = self.receiveBuffer[2]; #Extract the parameter length from the message
 					EVENT = self.receiveBuffer[1]; #Extract the event code from the message
 					if ( self.receive_buffer_pointer >= PAR_LEN + 2): #Check to see if the entire message has been received
-						EVENT_decoded = "Unknown"
-						try:
-							EVENT_decoded = list(EVENT_dict.keys())[list(EVENT_dict.values()).index(EVENT)]
-						except ValueError: #Unknown ID
-							pass
-						if EVENT == EVENT_dict['HCI_COMMAND_COMPLETE']:
-							OPCODE = self.receiveBuffer[5] << 8 | self.receiveBuffer[4]; #Extract the OPCODE from the message
+						if EVENT == 0x0E:							
 							OPCODE_decoded = "Unknown"
+							OPCODE = self.receiveBuffer[5] << 8 | self.receiveBuffer[4]; #Extract the OPCODE from the message
 							try:
 								OPCODE_decoded = list(OPCODE_dict.keys())[list(OPCODE_dict.values()).index(OPCODE)]
 							except ValueError: #Unknown ID
 								pass
-							tempMSG = AnalyzerFrame('command complete event', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'EVENT_decoded':EVENT_decoded, 'OPCODE':OPCODE, 'EVENT': hex(EVENT),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
+							tempMSG = AnalyzerFrame('command complete event', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'OPCODE': hex(OPCODE),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
+						elif EVENT == 0x05: #Disconnection
+							conhndl = self.receiveBuffer[5] << 8 | self.receiveBuffer[4]; #Extract the OPCODE from the message
+							reason = self.receiveBuffer[6]; #Extract the reason from the message
+							reason_decoded = "Unknown"
+							try:
+								reason_decoded = list(error_dict.keys())[list(error_dict.values()).index(reason)]
+							except ValueError: #Unknown ID
+								pass
+							tempMSG = AnalyzerFrame('disconnection event', self.startTime, frame.end_time, {'conhndl': hex(conhndl),'reason_decoded': reason_decoded,'reason': hex(reason),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
 						else:
-							tempMSG = AnalyzerFrame('event', self.startTime, frame.end_time, {'EVENT_decoded':EVENT_decoded, 'EVENT': hex(EVENT),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})						
+							EVENT_decoded = "Unknown"
+							try:
+								EVENT_decoded = list(EVENT_dict.keys())[list(EVENT_dict.values()).index(EVENT)]
+							except ValueError: #Unknown ID
+								pass
+							tempMSG = AnalyzerFrame('event', self.startTime, frame.end_time, {'EVENT_decoded':EVENT_decoded, 'EVENT': hex(EVENT),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
 			elif(self.receiveBuffer[0] == 2): #HCI ACL Data
-				if(self.receive_buffer_pointer >= 2):#Byte 1 and 2 tell how big the message is
+				if(self.receive_buffer_pointer >= 4):#Byte 7 and 8 tell how big the message is
 					PAR_LEN = self.receiveBuffer[4] << 8 | self.receiveBuffer[3]; #Extract the parameter length from the message
-					if ( self.receive_buffer_pointer >= PAR_LEN + 3): #Check to see if the entire message has been received
+					if ( self.receive_buffer_pointer >= PAR_LEN + 4): #Check to see if the entire message has been received
 						tempMSG = AnalyzerFrame('HCI ACL Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[5:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
 			elif(self.receiveBuffer[0] == 3): #Synchronous Data
-				if(self.receive_buffer_pointer >= 2):#Byte 1 and 2 tell how big the message is
+				if(self.receive_buffer_pointer >= 3):#Byte 7 and 8 tell how big the message is
 					PAR_LEN = self.receiveBuffer[3]; #Extract the parameter length from the message
 					if ( self.receive_buffer_pointer >= PAR_LEN + 3): #Check to see if the entire message has been received
 						tempMSG = AnalyzerFrame('Synchronous Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[4:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
 			elif(self.receiveBuffer[0] == 5): #Isochronous Data
-				if(self.receive_buffer_pointer >= 2):#Byte 1 and 2 tell how big the message is
+				if(self.receive_buffer_pointer >= 4):#Byte 7 and 8 tell how big the message is
 					PAR_LEN = (self.receiveBuffer[4] << 8 | self.receiveBuffer[3]) >> 2; #Extract the parameter length from the message
-					if ( self.receive_buffer_pointer >= PAR_LEN + 5): #Check to see if the entire message has been received
+					if ( self.receive_buffer_pointer >= PAR_LEN + 4): #Check to see if the entire message has been received
 						tempMSG = AnalyzerFrame('Isochronous Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[4:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
@@ -354,4 +439,3 @@ class Hla(HighLevelAnalyzer):
 			self.receive_buffer_pointer += 1;
 			if (self.receive_buffer_pointer == 0):
 				return tempMSG
-
