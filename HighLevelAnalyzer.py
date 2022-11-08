@@ -239,6 +239,13 @@ EVENT_dict = {
 	'AUTHENTICATED_PAYLOAD_TIMEOUT_EXPIRED'		:0x57
 }
 
+pb_flag_dict = {
+	0x0:'First non-automatically-flushable packet of a higher layer message',
+	0x1:'Continuing fragment of a higher layer message',
+	0x2:'First automatically flushable packet of a higher layer message',
+	0x3:'A complete L2CAP PDU. Automatically flushable.',
+}
+
 error_dict = {
   'Success'                                                                         :0x00, 
   'Unknown HCI Command'                                                             :0x01, 
@@ -337,7 +344,7 @@ class Hla(HighLevelAnalyzer):
 			'format': 'Disconnection complete event for handle: {{data.conhndl}}. Reason: {{data.reason_decoded}}({{data.reason}}), Data: {{data.data}}'
 		},
 		'HCI ACL Data': {
-			'format': 'Asynchronous Data, Parameter length: {{data.PAR_LEN}}, Data: {{data.data}}'
+			'format': 'HCI ACL Data, Handle: {{data.handle}}, Packet Boundary flag: {{data.pb_flag}}, Broadcast_flag: {{data.b_flag}}, Parameter length: {{data.PAR_LEN}}, Data: {{data.data}}'
 		},
 		'Synchronous Data': {
 			'format': 'Synchronous Data, Parameter length: {{data.PAR_LEN}}, Data: {{data.data}}'
@@ -386,7 +393,7 @@ class Hla(HighLevelAnalyzer):
 					PAR_LEN = self.receiveBuffer[2]; #Extract the parameter length from the message
 					EVENT = self.receiveBuffer[1]; #Extract the event code from the message
 					if ( self.receive_buffer_pointer >= PAR_LEN + 2): #Check to see if the entire message has been received
-						if EVENT == 0x0E:							
+						if EVENT == 0x0E:
 							OPCODE_decoded = "Unknown"
 							OPCODE = self.receiveBuffer[5] << 8 | self.receiveBuffer[4]; #Extract the OPCODE from the message
 							try:
@@ -394,6 +401,16 @@ class Hla(HighLevelAnalyzer):
 							except ValueError: #Unknown ID
 								pass
 							tempMSG = AnalyzerFrame('command complete event', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'OPCODE': hex(OPCODE),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
+#						if EVENT == 0x3E: #LE event
+#							OPCODE_decoded = "Unknown"
+#							OPCODE = self.receiveBuffer[5] << 8 | self.receiveBuffer[4]; #Extract the OPCODE from the message
+#							try:
+#								OPCODE_decoded = list(OPCODE_dict.keys())[list(OPCODE_dict.values()).index(OPCODE)]
+#							except ValueError: #Unknown ID
+#								pass
+#							if self.receiveBuffer[3] == 0x01: #LE connection complete page 2380 of spec
+#								tempMSG = AnalyzerFrame('LE connection complete event', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'OPCODE': hex(OPCODE),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
+#							tempMSG = AnalyzerFrame('command complete event', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'OPCODE': hex(OPCODE),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
 						elif EVENT == 0x05: #Disconnection
 							conhndl = self.receiveBuffer[5] << 8 | self.receiveBuffer[4]; #Extract the OPCODE from the message
 							reason = self.receiveBuffer[6]; #Extract the reason from the message
@@ -414,9 +431,13 @@ class Hla(HighLevelAnalyzer):
 			
 			elif(self.receiveBuffer[0] == 2): #HCI ACL Data
 				if(self.receive_buffer_pointer >= 4):#Byte 7 and 8 tell how big the message is
-					PAR_LEN = self.receiveBuffer[4] << 8 | self.receiveBuffer[3]; #Extract the parameter length from the message
+					PAR_LEN = self.receiveBuffer[4] << 8 | self.receiveBuffer[3] #Extract the parameter length from the message
+					handle = (self.receiveBuffer[2]&0xf) << 8 | self.receiveBuffer[1] #Extract the handle from the message
+					pb_flag = (self.receiveBuffer[2]&0x30) >> 4 #Extract the pb flag from the message
+					pb_flag_decoded = pb_flag_dict[pb_flag] #Extract the pb flag from the message
+					b_flag = (self.receiveBuffer[2]) >> 6 #Extract the b flag from the message
 					if ( self.receive_buffer_pointer >= PAR_LEN + 4): #Check to see if the entire message has been received
-						tempMSG = AnalyzerFrame('HCI ACL Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[5:]), 'message': bytes(self.receiveBuffer)})
+						tempMSG = AnalyzerFrame('HCI ACL Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'handle': handle, 'pb_flag_decoded': pb_flag_decoded, 'pb_flag': pb_flag, 'b_flag': b_flag, 'data':bytes(self.receiveBuffer[5:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
 			elif(self.receiveBuffer[0] == 3): #Synchronous Data
@@ -433,9 +454,9 @@ class Hla(HighLevelAnalyzer):
 						tempMSG = AnalyzerFrame('Isochronous Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[4:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
-			if frame.start_time - self.startTime > (frame.end_time-frame.start_time) * 400:
+			if frame.start_time - self.startTime > (frame.end_time-frame.start_time) * 18000:
 				tempMSG = AnalyzerFrame('error', self.startTime, frame.end_time, {'error': 'Timeout'})
 				self.receive_buffer_pointer = -1
-			self.receive_buffer_pointer += 1;
+			self.receive_buffer_pointer += 1
 			if (self.receive_buffer_pointer == 0):
 				return tempMSG
