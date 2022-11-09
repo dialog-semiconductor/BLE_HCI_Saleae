@@ -365,6 +365,7 @@ class Hla(HighLevelAnalyzer):
 		'''
 		self.receive_buffer_pointer = 0
 		self.receiveBuffer = []
+		self.error = False
 
 		print("Dialog Semiconductor HCI interface decoder by Niek Ilmer")
 
@@ -375,6 +376,14 @@ class Hla(HighLevelAnalyzer):
 		The type and data values in `frame` will depend on the input analyzer.
 		'''
 		uartbuffer = int(frame.data['data'][0])
+		
+		if not hasattr(self, 'startTime'):
+			self.startTime = frame.start_time #make sure this is defined
+
+		if frame.start_time - self.startTime > (frame.end_time-frame.start_time) * 18000:
+			self.error = True
+			tempMSG = AnalyzerFrame('error', self.startTime, frame.start_time, {'error': 'Timeout'})
+			self.receive_buffer_pointer = 0
 		if (( self.receive_buffer_pointer == 0 and (uartbuffer == 1 or uartbuffer == 2 or uartbuffer == 3 or uartbuffer == 4 or uartbuffer == 5)) or self.receive_buffer_pointer > 0 and (not 'error' in frame.data)):
 			if self.receive_buffer_pointer == 0:
 				self.startTime = frame.start_time #capture the start
@@ -477,10 +486,7 @@ class Hla(HighLevelAnalyzer):
 					if ( self.receive_buffer_pointer >= PAR_LEN + 4): #Check to see if the entire message has been received
 						tempMSG = AnalyzerFrame('Isochronous Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[4:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
-			
-			if frame.start_time - self.startTime > (frame.end_time-frame.start_time) * 18000:
-				tempMSG = AnalyzerFrame('error', self.startTime, frame.end_time, {'error': 'Timeout'})
-				self.receive_buffer_pointer = -1
 			self.receive_buffer_pointer += 1
-			if (self.receive_buffer_pointer == 0):
+			if (self.receive_buffer_pointer == 0) or self.error:
+				self.error = False
 				return tempMSG
