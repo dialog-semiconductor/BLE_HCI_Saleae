@@ -343,6 +343,12 @@ class Hla(HighLevelAnalyzer):
 		'disconnection event': {
 			'format': 'Disconnection complete event for handle: {{data.conhndl}}. Reason: {{data.reason_decoded}}({{data.reason}}), Data: {{data.data}}'
 		},
+		'LE connection complete event': {
+			'format': 'LE connection complete event for handle: {{data.connection_handle}}. Status: {{data.status}}, Peer address type: {{data.peer_address_type}}, Peer address: {{data.peer_address}} Data: {{data.data}}'
+		},
+		'LE Advertising report': {
+			'format': 'LE Advertising report address: {{data.address}}, RSSI: {{data.RSSI}} Data: {{data.data}}'
+		},
 		'HCI ACL Data': {
 			'format': 'HCI ACL Data, Handle: {{data.handle}}, Packet Boundary flag: {{data.pb_flag}}, Broadcast_flag: {{data.b_flag}}, Parameter length: {{data.PAR_LEN}}, Data: {{data.data}}'
 		},
@@ -357,9 +363,9 @@ class Hla(HighLevelAnalyzer):
 		
 		Settings can be accessed using the same name used above.
 		'''
-		self.receive_buffer_pointer = 0;
-		self.receiveBuffer = [];
-   
+		self.receive_buffer_pointer = 0
+		self.receiveBuffer = []
+
 		print("Dialog Semiconductor HCI interface decoder by Niek Ilmer")
 
 	def decode(self, frame: AnalyzerFrame):
@@ -401,16 +407,34 @@ class Hla(HighLevelAnalyzer):
 							except ValueError: #Unknown ID
 								pass
 							tempMSG = AnalyzerFrame('command complete event', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'OPCODE': hex(OPCODE),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
-#						if EVENT == 0x3E: #LE event
-#							OPCODE_decoded = "Unknown"
-#							OPCODE = self.receiveBuffer[5] << 8 | self.receiveBuffer[4]; #Extract the OPCODE from the message
-#							try:
-#								OPCODE_decoded = list(OPCODE_dict.keys())[list(OPCODE_dict.values()).index(OPCODE)]
-#							except ValueError: #Unknown ID
-#								pass
-#							if self.receiveBuffer[3] == 0x01: #LE connection complete page 2380 of spec
-#								tempMSG = AnalyzerFrame('LE connection complete event', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'OPCODE': hex(OPCODE),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
-#							tempMSG = AnalyzerFrame('command complete event', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'OPCODE': hex(OPCODE),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
+						elif EVENT == 0x3E: #LE event
+							OPCODE_decoded = "Unknown"
+							OPCODE = 0
+							if self.receiveBuffer[3] == 0x01: #LE connection complete page 2380 of spec
+								status = self.receiveBuffer[4]
+								connection_handle = self.receiveBuffer[6] << 8 | self.receiveBuffer[5]
+								role = self.receiveBuffer[7]
+								peer_address_type = self.receiveBuffer[8]
+								peer_address = self.receiveBuffer[14] << 40 |  self.receiveBuffer[13] << 32 |  self.receiveBuffer[12] << 24 |  self.receiveBuffer[11] << 16 |  self.receiveBuffer[10] << 8 | self.receiveBuffer[9]
+								connection_latency = self.receiveBuffer[16] << 8 | self.receiveBuffer[15]
+								connection_interval = self.receiveBuffer[18] << 8 | self.receiveBuffer[17]
+								supervision_timeout = self.receiveBuffer[20] << 8 | self.receiveBuffer[19]
+								master_clock_accuracy = self.receiveBuffer[21]
+								tempMSG = AnalyzerFrame('LE connection complete event', self.startTime, frame.end_time, {'OPCODE_decoded':'LE connection complete','PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'status': status, 'connection_handle': connection_handle, 'role': role, 'peer_address_type': peer_address_type, 'peer_address': hex(peer_address), 'connection_interval': connection_interval, 'connection_latency': connection_latency, 'supervision_timeout': supervision_timeout, 'master_clock_accuracy': master_clock_accuracy})
+							elif self.receiveBuffer[3] == 0x02: #LE Advertising report page 2382 of spec
+								num_reports = self.receiveBuffer[4] #i'm going to assume this is always 1
+								event_type = self.receiveBuffer[5]
+								address_type = self.receiveBuffer[6]
+								address = self.receiveBuffer[12] << 40 |  self.receiveBuffer[11] << 32 |  self.receiveBuffer[10] << 24 |  self.receiveBuffer[9] << 16 |  self.receiveBuffer[8] << 8 | self.receiveBuffer[7]
+								data_length = self.receiveBuffer[13]
+								index = 14 + data_length
+								data = bytes(self.receiveBuffer[14:index-1])
+								RSSI_received = self.receiveBuffer[index]
+								if(RSSI_received & 0x80):
+									RSSI_received = -0x100 + RSSI_received
+								tempMSG = AnalyzerFrame('LE Advertising report', self.startTime, frame.end_time, {'OPCODE_decoded':'LE Advertising report', 'data':data, 'num_reports': num_reports, 'event_type': event_type, 'data_length': data_length, 'address_type': address_type, 'address': hex(address), 'RSSI': RSSI_received})
+							else:
+								tempMSG = AnalyzerFrame('command complete event', self.startTime, frame.end_time, {'OPCODE_decoded':OPCODE_decoded, 'OPCODE': hex(OPCODE),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
 						elif EVENT == 0x05: #Disconnection
 							conhndl = self.receiveBuffer[5] << 8 | self.receiveBuffer[4]; #Extract the OPCODE from the message
 							reason = self.receiveBuffer[6]; #Extract the reason from the message
@@ -419,14 +443,14 @@ class Hla(HighLevelAnalyzer):
 								reason_decoded = list(error_dict.keys())[list(error_dict.values()).index(reason)]
 							except ValueError: #Unknown ID
 								pass
-							tempMSG = AnalyzerFrame('disconnection event', self.startTime, frame.end_time, {'conhndl': hex(conhndl),'reason_decoded': reason_decoded,'reason': hex(reason),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
+							tempMSG = AnalyzerFrame('disconnection event', self.startTime, frame.end_time, {'OPCODE_decoded':'Disconnection event', 'conhndl': hex(conhndl),'reason_decoded': reason_decoded,'reason': hex(reason),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
 						else:
 							EVENT_decoded = "Unknown"
 							try:
 								EVENT_decoded = list(EVENT_dict.keys())[list(EVENT_dict.values()).index(EVENT)]
 							except ValueError: #Unknown ID
 								pass
-							tempMSG = AnalyzerFrame('event', self.startTime, frame.end_time, {'EVENT_decoded':EVENT_decoded, 'EVENT': hex(EVENT),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
+							tempMSG = AnalyzerFrame('event', self.startTime, frame.end_time, {'OPCODE_decoded':EVENT_decoded, 'EVENT_decoded':EVENT_decoded, 'EVENT': hex(EVENT),'PAR_LEN': PAR_LEN, 'data':bytes(self.receiveBuffer[3:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
 			elif(self.receiveBuffer[0] == 2): #HCI ACL Data
@@ -437,7 +461,7 @@ class Hla(HighLevelAnalyzer):
 					pb_flag_decoded = pb_flag_dict[pb_flag] #Extract the pb flag from the message
 					b_flag = (self.receiveBuffer[2]) >> 6 #Extract the b flag from the message
 					if ( self.receive_buffer_pointer >= PAR_LEN + 4): #Check to see if the entire message has been received
-						tempMSG = AnalyzerFrame('HCI ACL Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'handle': handle, 'pb_flag_decoded': pb_flag_decoded, 'pb_flag': pb_flag, 'b_flag': b_flag, 'data':bytes(self.receiveBuffer[5:]), 'message': bytes(self.receiveBuffer)})
+						tempMSG = AnalyzerFrame('HCI ACL Data', self.startTime, frame.end_time, {'PAR_LEN': PAR_LEN, 'handle': handle, 'OPCODE_decoded': pb_flag_decoded, 'pb_flag_decoded': pb_flag_decoded, 'pb_flag': pb_flag, 'b_flag': b_flag, 'data':bytes(self.receiveBuffer[5:]), 'message': bytes(self.receiveBuffer)})
 						self.receive_buffer_pointer = -1
 			
 			elif(self.receiveBuffer[0] == 3): #Synchronous Data
