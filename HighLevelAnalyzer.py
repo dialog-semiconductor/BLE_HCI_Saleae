@@ -376,11 +376,12 @@ class Hla(HighLevelAnalyzer):
 		The type and data values in `frame` will depend on the input analyzer.
 		'''
 		uartbuffer = int(frame.data['data'][0])
+		tempMSG = None
 		
 		if not hasattr(self, 'startTime'):
 			self.startTime = frame.start_time #make sure this is defined
 
-		if frame.start_time - self.startTime > (frame.end_time-frame.start_time) * 18000:
+		if frame.start_time - self.startTime > (frame.end_time-frame.start_time) * 18000 and self.receive_buffer_pointer > 0:
 			self.error = True
 			tempMSG = AnalyzerFrame('error', self.startTime, frame.start_time, {'error': 'Timeout'})
 			self.receive_buffer_pointer = 0
